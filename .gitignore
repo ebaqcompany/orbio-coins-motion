@@ -1,0 +1,8 @@
+# Licensed fonts are never committed. Drop your own licensed file in fonts/ (see fonts/README.md).
+fonts/*.otf
+fonts/*.ttf
+fonts/*.woff
+fonts/*.woff2
+renders/*
+!renders/orbio-coins_preview.mp4
+.DS_Store

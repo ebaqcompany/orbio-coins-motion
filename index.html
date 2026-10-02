@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orbio Coins</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@500&display=block" rel="stylesheet">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+<script src="./config.js"></script>
+<style>
+/* ORBIO COINS. Edit config.js, not this file (see README.md / CLAUDE.md).
+   Headline font: put your licensed ABC Arizona Flare Regular in fonts/ArizonaFlare-Regular.otf (or .woff2). */
+@font-face { font-family: "Orbio Display"; src: url("./fonts/ArizonaFlare-Regular.woff2") format("woff2"), url("./fonts/ArizonaFlare-Regular.otf") format("opentype"); font-display: block; }
+html, body { height: 100%; margin: 0; background: #0B0B0C; overflow: hidden; }
+.stage { position: absolute; left: 50%; top: 50%; overflow: hidden; transform-origin: 50% 50%; }
+.stage > * { position: absolute; left: 0; top: 0; }
+#type text { font-family: "Orbio Display", "Times New Roman", serif; }
+.pill { height: 70.5px; padding: 0 36.75px; box-sizing: border-box; border-radius: 12px; display: grid; place-items: center; white-space: nowrap; will-change: transform; }
+.pill span { font: 500 24px/1 "Geist Mono", ui-monospace, monospace; letter-spacing: .2em; margin-right: -.2em; }
+</style>
+</head>
+<body>
+<main class="stage" id="stage">
+  <svg id="type"></svg>
+  <canvas id="gl"></canvas>
+  <div class="pill" id="pill"><span></span></div>
+</main>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const CFG = window.ORBIO, W = CFG.width, H = CFG.height, T = CFG.timing, HL = CFG.headline;
+const q = new URLSearchParams(location.search), SPIN = CFG.mode === "spin" || q.get("mode") === "spin";
+const stage = document.getElementById("stage"), pill = document.getElementById("pill"), pillLabel = pill.querySelector("span"), type = document.getElementById("type");
+Object.assign(stage.style, { width: W + "px", height: H + "px" });
+type.setAttribute("viewBox", `0 0 ${W} ${H}`); type.setAttribute("width", W); type.setAttribute("height", H);
+Object.assign(pill.style, { left: CFG.pillCenter.x + "px", top: (CFG.pillCenter.y - 35.25) + "px" });
+document.title = "Orbio Coins";
+const fit = () => { stage.style.transform = `translate(-50%, -50%) scale(${Math.min(innerWidth / W, innerHeight / H)})`; };
+addEventListener("resize", fit); fit();
+
+// ── headline lines: live SVG text, positioned by cap top ──
+const NS = "http://www.w3.org/2000/svg", CAP = 0.695;            // Arizona Flare cap height (em)
+const nLines = Math.max(...CFG.scenes.map(s => s.lines.length));
+const lines = Array.from({ length: nLines }, (_, i) => {
+  const g = document.createElementNS(NS, "g"), t = document.createElementNS(NS, "text");
+  t.setAttribute("font-size", HL.fontSize); t.setAttribute("letter-spacing", HL.tracking * HL.fontSize);
+  g.appendChild(t); type.appendChild(g); return { g, t, key: "" };
+});
+const blurs = lines.map((_, i) => {
+  const f = document.createElementNS(NS, "filter"); f.id = "mb" + i; ["x", "y", "width", "height"].forEach((a, j) => f.setAttribute(a, ["-10%", "0%", "120%", "100%"][j]));
+  const b = document.createElementNS(NS, "feGaussianBlur"); f.appendChild(b); type.appendChild(f); return b;
+});
+function setLine(l, spec, i) {
+  const key = spec ? JSON.stringify(spec) : "";
+  if (l.key === key) return; l.key = key;
+  if (!spec) { l.t.textContent = ""; return; }
+  l.t.textContent = spec.text;
+  const centre = spec.align === "center";
+  l.t.setAttribute("text-anchor", centre ? "middle" : "start");
+  // SVG letter-spacing also trails the last glyph; shift centred lines back by half of it
+  l.t.setAttribute("x", centre ? spec.x - HL.tracking * HL.fontSize / 2 : spec.x);
+  l.t.setAttribute("y", (HL.capTops[i] ?? HL.capTops.at(-1)) + CAP * HL.fontSize);
+}
+
+// ── the CREDIT coin (orbio.so/protocol lighting), one viewport per coin ──
+const canvas = document.getElementById("gl"); canvas.width = W; canvas.height = H;
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(W, H, false);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.3;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setClearColor(0, 0); renderer.autoClear = false;
+const HALF = 1.95, cam = new THREE.OrthographicCamera(-HALF, HALF, HALF, -HALF, 0.1, 30); cam.position.z = 7;
+const envScene = new THREE.Scene(); envScene.background = new THREE.Color(0x555555);
+const panel = (x, y, z, w, h, o) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(o, o, o), side: THREE.DoubleSide })); m.position.set(x, y, z); m.lookAt(0, 0, 0); envScene.add(m); };
+panel(-4, 4, 5, 5, 8, 5); panel(5, 1, 3, 3, 7, 2.5); panel(0, -4, -4, 6, 3, 3); panel(-4, 1, -4, 4, 7, 4);
+const env = new THREE.PMREMGenerator(renderer).fromScene(envScene, 0.02, 0.1, 30).texture;
+const gltf = await new GLTFLoader().loadAsync("./coin.glb");
+const COINS = CFG.coins.map(c => ({ ...c }));
+for (const c of COINS) {
+  const scene = new THREE.Scene(); scene.environment = env;
+  const key = new THREE.DirectionalLight(0xfff0cf, 2.2); key.position.set(-3, 4, 5); key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048); Object.assign(key.shadow.camera, { left: -2, right: 2, top: 2, bottom: -2 });
+  key.shadow.bias = -5e-5; key.shadow.normalBias = 0.006; scene.add(key);
+  const fill = new THREE.DirectionalLight(0xffffff, 1.3); fill.position.set(4, -1, 3); scene.add(fill);
+  const coin = gltf.scene.clone(true); coin.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); scene.add(coin);
+  coin.rotation.set(...c.pose); coin.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(coin, true), size = box.getSize(new THREE.Vector3());
+  const r = c.rect, k = ((r[3] - r[1]) / size.y + (r[2] - r[0]) / size.x) / 2;
+  Object.assign(c, { scene, coin, V: 2 * HALF * k, cx: (r[0] + r[2]) / 2, cy: (r[1] + r[3]) / 2 });
+}
+function drawCoin(c, x, y, rx, ry, rz) {
+  c.coin.rotation.set(rx, ry, rz);
+  const V = Math.round(c.V), vx = x - V / 2, vy = H - y - V / 2, ix = Math.floor(vx), iy = Math.floor(vy), u = 2 * HALF / V;
+  cam.position.set(-(vx - ix) * u, -(vy - iy) * u, 7); cam.updateMatrixWorld();
+  renderer.setViewport(ix, iy, V, V); renderer.setScissor(ix, iy, V, V); renderer.clearDepth(); renderer.render(c.scene, cam);
+}
+
+// ── easing ──
+function bezier(x1, y1, x2, y2) {
+  const cx = 3 * x1, bx = 3 * (x2 - x1) - cx, ax = 1 - cx - bx, cy = 3 * y1, by = 3 * (y2 - y1) - cy, ay = 1 - cy - by;
+  const X = u => ((ax * u + bx) * u + cx) * u, Y = u => ((ay * u + by) * u + cy) * u, dX = u => (3 * ax * u + 2 * bx) * u + cx;
+  return x => { if (x <= 0) return 0; if (x >= 1) return 1; let u = x;
+    for (let k = 0; k < 8; k++) { const d = dX(u); if (Math.abs(d) < 1e-6) break; u -= (X(u) - x) / d; }
+    let lo = 0, hi = 1; for (let k = 0; k < 20 && Math.abs(X(u) - x) > 1e-6; k++) { if (X(u) < x) lo = u; else hi = u; u = (lo + hi) / 2; }
+    return Y(u); };
+}
+const TOSS = bezier(.16, 1, .3, 1), DROP = bezier(.55, 0, .9, .45), POP = bezier(.34, 1.56, .64, 1), SHRINK = bezier(.55, 0, 1, .45);
+const clamp = x => Math.min(1, Math.max(0, x)), smooth = x => (x = clamp(x), x * x * (3 - 2 * x)), TAU = Math.PI * 2;
+const cubicIn = x => x * x * x, cubicOut = x => 1 - (1 - x) ** 3;
+
+// ── timeline: each scene pivots on the cut ──
+const C = T.sceneMs, L = C * CFG.scenes.length, MID = C * 0.525;
+const IN_DUR = i => T.inMs + i * T.inStepMs, IN_X = i => T.outPx * IN_DUR(i) / T.outMs;   // same speed either side of the cut
+const DROP_AT = C - T.dropBeforeEndMs, PILL_OUT = C - T.pillOutBeforeEndMs;
+
+function apply(t) {
+  t = ((t % L) + L) % L;
+  const k = Math.floor(t / C), u = t - k * C, s = CFG.scenes[k];
+  stage.style.background = s.background; pill.style.background = s.pill; pill.style.color = s.pillInk;
+  if (pillLabel.textContent !== s.pillLabel) pillLabel.textContent = s.pillLabel;
+
+  lines.forEach((l, i) => {                                   // lines alternate direction
+    setLine(l, s.lines[i], i);
+    const dir = i % 2 ? -1 : 1, outAt = C - T.outMs;
+    let x, v;
+    if (u >= outAt) { const e = (u - outAt) / T.outMs; x = dir * T.outPx * cubicIn(e); v = 3 * T.outPx * e * e / T.outMs; }
+    else { const p = clamp(u / IN_DUR(i)); x = -dir * IN_X(i) * (1 - cubicOut(p)); v = p < 1 ? 3 * IN_X(i) * (1 - p) ** 2 / IN_DUR(i) : 0; }
+    l.g.setAttribute("transform", `translate(${x.toFixed(2)} 0)`); l.t.setAttribute("fill", s.ink);
+    const sigma = Math.min(16, v * 16.67 * .16);
+    if (T.motionBlur && sigma > .3) { blurs[i].setAttribute("stdDeviation", `${sigma.toFixed(2)} 0`); l.g.setAttribute("filter", `url(#mb${i})`); }
+    else l.g.removeAttribute("filter");
+  });
+
+  const ps = u < PILL_OUT ? POP(clamp((u - T.pillInMs) / 450)) : 1 - SHRINK(clamp((u - PILL_OUT) / 220));
+  pill.style.transform = `translateX(-50%) scale(${Math.max(0, ps).toFixed(4)})`; pill.style.visibility = ps > .001 ? "visible" : "hidden";
+
+  renderer.setScissorTest(false); renderer.clear(); renderer.setScissorTest(true);
+  COINS.forEach((c, i) => {
+    const [rx, ry, rz] = c.pose, w = c.turns * TAU / L;
+    if (SPIN) { drawCoin(c, c.cx, c.cy + 8 * Math.sin(TAU * t / (L / 8) + i * 1.7), rx, ry + w * t, rz); return; }
+    const a = i * T.tossStepMs, f = DROP_AT + i * 40, below = H + c.V / 2 + 20;
+    if (u < a) return;
+    const x0 = c.cx + (W / 2 - c.cx) * .35;
+    const p = TOSS(clamp((u - a) / T.tossMs)), bob = 8 * Math.sin(TAU * (u - a) / 2600 + i * 1.7) * smooth((u - a - 600) / 900);
+    let x = x0 + (c.cx - x0) * p, y = below + (c.cy - below) * p + bob, flip = -2 * TAU * (1 - p);
+    if (u > f) { const d = DROP((u - f) / (C - f)); x += (c.cx - W / 2) * .12 * d; y += (below - y) * d; flip += 1.25 * TAU * d; }
+    drawCoin(c, x, y, rx + flip, ry + w * (u - MID), rz);
+  });
+}
+
+const ready = Promise.all([document.fonts.load('500 24px "Geist Mono"'), document.fonts.load(`${HL.fontSize}px "Orbio Display"`)]).then(() => document.fonts.ready);
+if (q.has("render")) {                                        // frame-stepped export: node tools/export_loop.mjs
+  window.LOOP_MS = L;
+  window.seek = t => ready.then(() => new Promise(r => { apply(t); requestAnimationFrame(() => requestAnimationFrame(r)); }));
+  await ready; apply(0);
+} else {
+  await ready;
+  if (location.hash === "#still" || matchMedia("(prefers-reduced-motion: reduce)").matches) apply(MID);
+  else { let t0 = performance.now(), paused = false, pt = 0;
+    addEventListener("keydown", e => { if (e.code === "Space") { paused = !paused; if (paused) pt = performance.now() - t0; else t0 = performance.now() - pt; } });
+    (function tick(now) { if (!paused) apply(now - t0); requestAnimationFrame(tick); })(t0); }
+}
+</script>
+</body>
+</html>
