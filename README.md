@@ -4,6 +4,8 @@ A seamless 1920×1080 loop for Orbio. Two scenes (Void → Marble), a headline t
 
 `renders/orbio-coins_preview.mp4` is the finished render.
 
+> **First, 2 minutes: get the headline font.** Request the free trial of ABC Arizona at https://abcdinamo.com/typefaces/arizona, then copy `ABCArizonaFlareTrial-Regular.otf` into `fonts/` and rename it `ArizonaFlare-Regular.otf`. Without it the headlines fall back to a plain serif. The trial is fine for experimenting; license it before anything is published.
+
 It's plain HTML. Everything you'd want to change (headlines, button labels, colors, timing, coin positions, number of scenes) lives in **one file: `config.js`**.
 
 ## Run it
